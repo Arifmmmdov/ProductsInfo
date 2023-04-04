@@ -1,0 +1,8 @@
+<resources>
+    <string name="app_name">AzerimedTask</string>
+    <string name="prod_name">iPhone 9</string>
+    <string name="prod_description">An apple mobile which is nothing like apple</string>
+    <string name="phones">Phones</string>
+    <string name="synchronization">synchronization</string>
+    <string name="trash">Trash</string>
+</resources>
