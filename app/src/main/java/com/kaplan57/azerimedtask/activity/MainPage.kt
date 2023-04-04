@@ -47,6 +47,7 @@ class MainPage : AppCompatActivity() {
             },
             {
                 setUpRecyclerView(it)
+                binding.progressBar.visibility = View.GONE
             }
         )
     }
@@ -76,9 +77,7 @@ class MainPage : AppCompatActivity() {
     }
 
     private fun setToLocalDBAsync(list: List<PhonesEntity>) {
-        GlobalScope.launch {
             PhonesRepository.setAllData(this@MainPage,list)
-        }
     }
 
     private fun visibilitiesOfViews(state:Boolean) {
@@ -125,9 +124,9 @@ class MainPage : AppCompatActivity() {
             }
         }
         else
-            PhonesRepository.getAllData(
+            PhonesRepository.getResearchedData(
                 this,
-                null
+                text!!
             ) {
                 mAdapter.notifyItemChanged(it)
             }
