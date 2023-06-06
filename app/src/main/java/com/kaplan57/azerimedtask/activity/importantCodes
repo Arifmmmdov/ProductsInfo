@@ -1,0 +1,108 @@
+*******************//To use lambda functions in Some places
+public interface NoArgCallback {
+    void invoke();
+
+    // No operation
+    static final NoArgCallback NO_OP = () -> {
+    };
+}
+
+
+ ***************// To return expected message while calling API
+
+sealed interface Expected<T> {
+    class Success<T>(val value: T) : Expected<T>
+    class Error<T>(val message: String, val code: Int = -1) : Expected<T> {
+        fun <Y> asError() = Error<Y>(message)
+    }
+
+    val success get() = (this as? Success)?.value
+    val error get() = (this as? Error)?.message
+
+    fun onSuccess(consumer: UnaryConsumer<T>): Expected<T> {
+        if (this is Success) consumer(value)
+        return this
+    }
+
+    fun onError(consumer: UnaryConsumer<Error<T>>): Expected<T> {
+        if (this is Error) consumer(this)
+        return this
+    }
+}
+
+
+
+*********************//When I want to return Expected  in my code
+
+suspend fun <TResult, TResponse : BaseResponse<TResult>> Call<TResponse>.awaitResult(
+    context: Activity?,
+    showProgressBar: Boolean,
+): Expected<TResult> {
+    return suspendCancellableCoroutine { continuation ->
+        enqueue(object : CustomCallBack<TResponse>(context, showProgressBar, false) {
+            override fun onResponse(call: Call<TResponse>, response: Response<TResponse>) {
+                super.onResponse(call, response)
+                //  CostumCallBack cant extract code in response correctly so it sends code manually
+                var code = 0
+
+                val body = if (response.isSuccessful) response.body() else null
+                val res = body?.result
+
+                if (res != null && (body.code / 100 == 2 || body.code == 0)) {
+                    //Log.i("bodyDetails", "onResponse: \n" + response.raw().request.url + "\n" + body.javaClass.toString())
+                    code = body.code
+                    continuation.resume(Expected.Success(res))
+                } else {
+                    val error =
+                        try {
+                            val failureResponse = Gson()
+                                .fromJson(response.errorBody()?.string(), ErrorBody::class.java)
+                           // Log.i("bodyDetails", "onResponse: \n" + response.raw().request.url + "\n" + failureResponse.javaClass.toString())
+                            code = failureResponse.code
+                            Expected.Error<TResult>(
+                                failureResponse.message,
+                                failureResponse.code
+                            )
+                        } catch (ignored: Exception) {
+                            Expected.Error(
+                                (body?.message ?: response.message() ?: ""),
+                                (body?.code ?: -1)
+                            )
+                        }
+                    continuation.resume(error)
+
+                    //CostumCallBack manual token expire check
+                    checkTokenExpire(code, context)
+                }
+            }
+
+            override fun onFailure(call: Call<TResponse>, t: Throwable) {
+                super.onFailure(call, t)
+                continuation.resume(
+                    Expected.Error(
+                        message = t.message ?: "Something went wrong",
+                        code = Constants.NETWORK_FAIL,
+                    )
+                )
+            }
+        })
+    }
+}
+
+suspend fun <TResult, TResponse : BaseResponse<TResult>> Call<TResponse>.awaitResult() =
+    awaitResult(null, false)
+
+suspend fun <TResult, TResponse : BaseResponse<TResult>> Call<TResponse>.awaitResult(
+    context: Activity?,
+) = awaitResult(context, context != null)
+
+fun <TResult, TResponse : BaseResponse<TResult>> Call<TResponse>.awaitResultAsync(
+    context: Activity?,
+    showProgressBar: Boolean,
+    onComplete: UnaryConsumer<Expected<TResult>>,
+) {
+    CoroutineScope(Dispatchers.Main).launch {
+        val result = awaitResult(context, showProgressBar)
+        onComplete.invoke(result)
+    }
+}
