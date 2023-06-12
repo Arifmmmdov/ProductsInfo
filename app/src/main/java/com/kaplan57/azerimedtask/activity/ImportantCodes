@@ -106,3 +106,182 @@ fun <TResult, TResponse : BaseResponse<TResult>> Call<TResponse>.awaitResultAsyn
         onComplete.invoke(result)
     }
 }
+
+//Base Response Adapter
+open class BaseResponseAdapter<ValueType>(
+    @SerializedName("result")
+    val value: ValueType?,
+) : BaseResponse<ValueType>(), Serializable {
+    override fun getResult() = value
+}
+
+
+/Base Response 
+abstract public class BaseResponse<T> implements Serializable {
+    @SerializedName("code")
+    @Expose
+    private int code;
+    @SerializedName("message")
+    @Expose
+    private String message;
+    @SerializedName("status")
+    @Expose
+    private int status;
+
+    private final static long serialVersionUID = -3623480830500576344L;
+
+
+    public BaseResponse() {
+    }
+
+    public BaseResponse(Integer code, String message) {
+        super();
+        this.code = code;
+        this.message = message;
+    }
+
+    public Integer getCode() {
+        return code;
+    }
+
+    public void setCode(Integer code) {
+        this.code = code;
+    }
+
+    public String getMessage() {
+        return message;
+    }
+
+    public void setMessage(String message) {
+        this.message = message;
+    }
+
+    public int getStatus() {
+        return status;
+    }
+
+    public void setStatus(int status) {
+        this.status = status;
+    }
+
+    @Nullable
+    abstract public T getResult();
+}
+
+
+// Show warning dialog
+public static void showWarningDialog(
+        final Activity context,
+        @Nullable final String title,
+        @Nullable final String message,
+        @Nullable final DualConsumer<TextView, Dialog> dynamicMessage,
+        @NonNull final int drawableRes,
+        @NonNull final boolean isCancelable,
+        final @Nullable @StringRes Integer positiveButton,
+        final @Nullable @StringRes Integer negativeButton,
+        @Nullable final NoArgCallback positiveListener,
+        @Nullable final NoArgCallback negativeListener,
+        @Nullable final NoArgCallback dismissListener) {
+    new Handler(Looper.getMainLooper()).post(() -> {
+        InfoDialog dialog = new InfoDialog(context, title, message, dynamicMessage, drawableRes, positiveButton, negativeButton, positiveListener, negativeListener, dismissListener);
+        dialog.setCancelable(isCancelable);
+        dialog.show();
+    });
+}
+
+
+// Info dialog
+class InfoDialog(
+    context: Context,
+    private val title: String?,
+    private val message: String?,
+    private val dynamicMessage: DualConsumer<TextView, Dialog>?,
+    private val drawableRes: Int? = null,
+    @StringRes private val positiveButtonText: Int?,
+    @StringRes private val negativeButtonText: Int?,
+    private val onPositiveButtonClickListener: NoArgCallback? = null,
+    private val onNegativeButtonClickListener: NoArgCallback? = null,
+    private val onDismissListener: NoArgCallback? = null
+) : Dialog(context) {
+    private val binding by lazy { InfoDialogBinding.inflate(layoutInflater) }
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        requestWindowFeature(Window.FEATURE_NO_TITLE)
+
+        setContentView(binding.root)
+
+        window?.let {
+            it.setLayout(
+                WindowManager.LayoutParams.MATCH_PARENT,
+                WindowManager.LayoutParams.WRAP_CONTENT
+            )
+            it.setBackgroundDrawable(InsetDrawable(ColorDrawable(Color.TRANSPARENT), 50))
+        }
+
+        title?.let { binding.title.text = it }
+        message?.let { binding.message.text = it }
+        dynamicMessage.let { it?.invoke(binding.message,this) }
+        if (drawableRes != null) binding.icon.setImageResource(drawableRes)
+        positiveButtonText?.let { binding.positiveButton.text = context.getString(it) }
+        negativeButtonText?.let {
+            binding.negativeButton.isVisible = true
+            binding.negativeButton.text = context.getString(it)
+        }
+        binding.positiveButton.setOnClickListener {
+            onPositiveButtonClickListener?.invoke()
+            dismiss()
+        }
+        binding.negativeButton.setOnClickListener {
+            onNegativeButtonClickListener?.invoke()
+            dismiss()
+        }
+        setOnCancelListener{
+            onDismissListener?.invoke()
+        }
+
+    }
+}
+
+
+*******//For using Expected class
+changeSmsNotificationStatus(
+                    this@SMSNotificationActivity,
+                    SmsNotificationRequest(args.card.cardid.toInt(), status.toString())
+                ) { expected ->
+                    expected.onSuccess {
+                        /*App.cards.find { it.cardid == args.card.cardid }?.processingInfo?.smsNotificationStatus =
+                            it.smsNotificationStatus*/
+                        changeLayoutForToggle(it.smsNotificationStatus == SmsNotificationStatus.ACTIVE)
+                    }
+                    expected.onError {
+                        changeLayoutForToggle(isToggleActive)
+                        Toast.makeText(this, it.message, Toast.LENGTH_SHORT).show()
+                    }
+                }
+
+
+****// A function that gets Expected inside UnaryConsumer
+fun changeSmsNotificationStatus(
+    activity: Activity,
+    request: SmsNotificationRequest,
+    onComplete: UnaryConsumer<Expected<SmsNotification>>
+) {
+    CoroutineScope(Dispatchers.Main).launch {
+        onComplete(changeSmsNotificationStatusAsync(activity, request))
+    }
+}
+
+****// A function that returns Expected using awaitResult
+suspend fun changeSmsNotificationStatusAsync(
+    activity: Activity?,
+    request: SmsNotificationRequest
+): Expected<SmsNotification> =
+    smsNotificationStatusCall(request).awaitResult(activity, activity != null)
+
+
+
+***//Unary Consumer to call functions with lambda
+public interface UnaryConsumer<T> extends Serializable {
+    void invoke(T t);
+}
